@@ -263,12 +263,29 @@ def arg_parse(args):
 
 def setup_singleton(args):
     import boto3  # Safe since this import is not reached unless dependency check passes.
+    import os
     user_account = ""
     user_id = ""
     try:
+        print(f"DEBUG: Creating STS client...")
+        print(f"DEBUG: AWS_PROFILE={os.environ.get('AWS_PROFILE', 'not set')}")
+        print(f"DEBUG: AWS_DEFAULT_REGION={os.environ.get('AWS_DEFAULT_REGION', 'not set')}")
+        print(f"DEBUG: AWS_REGION={os.environ.get('AWS_REGION', 'not set')}")
+        
+        # Get the default session to see what boto3 will use
+        session = boto3.Session()
+        print(f"DEBUG: Session region_name={session.region_name}")
+        print(f"DEBUG: Session profile_name={session.profile_name}")
+        
         sts = boto3.client("sts")
+        print(f"DEBUG: STS client created")
+        print(f"DEBUG: STS endpoint URL: {sts.meta.endpoint_url}")
+        print(f"DEBUG: STS region: {sts.meta.region_name}")
+        print(f"DEBUG: Calling get_caller_identity...")
+        
         user_account = sts.get_caller_identity().get("Account")
         user_id = sts.get_caller_identity().get("UserId")
+        print(f"DEBUG: Got caller identity - Account: {user_account}, UserId: {user_id}")
     except sts.exceptions as e:
         print("Can not get AWS user account. Is your AWS CLI Configured?")
         print("Try running: aws configure")
