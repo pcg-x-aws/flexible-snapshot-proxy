@@ -523,6 +523,11 @@ def validate_snapshot(snapshot_id, region=singleton.AWS_ORIGIN_REGION): #Return 
 # Verify that we can READ from and WRITE to an S3 Bucket.
 # Will fail if user doesn't have permissions to the bucket, if bucket doesn't exist, or if the permissions are incorrect.
 def validate_s3_bucket(region, check_is_read, check_is_write): #Return if user has all required permissions on the bucket. Otherwise Invalid
+    # Skip validation for cross-partition scenarios where canonical user ID couldn't be retrieved
+    if singleton.AWS_CANONICAL_USER_ID == "unknown":
+        print("DEBUG: Skipping S3 bucket ACL validation (cross-partition scenario)")
+        return True
+    
     valid = True
     try:
         session=boto3.Session(profile_name=singleton.AWS_S3_PROFILE)

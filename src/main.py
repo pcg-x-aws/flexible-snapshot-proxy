@@ -297,10 +297,16 @@ def setup_singleton(args):
         session=boto3.Session(profile_name=singleton.AWS_S3_PROFILE)
         s3 = session.client('s3', endpoint_url=singleton.AWS_S3_ENDPOINT_URL)
         user_canonical_id = s3.list_buckets()["Owner"]["ID"]
-    except s3.exceptions as e:
-        print("Error: Could not get canonical user id")
-        print(e)
-        return None
+    except Exception as e:
+        # For cross-partition scenarios or custom S3 endpoints, canonical user ID may not be retrievable
+        # This is acceptable as it's only used for S3 bucket ACL validation which can be skipped
+        if singleton.AWS_S3_ENDPOINT_URL:
+            print("DEBUG: Could not get canonical user id (custom endpoint) - skipping ACL validation")
+            user_canonical_id = "unknown"
+        else:
+            print("Error: Could not get canonical user id")
+            print(e)
+            return None
 
     # Find aws regions
     aws_origin_region = args.origin_region
@@ -344,30 +350,37 @@ def setup_singleton(args):
     dry_run = args.dry_run
 
     # Validation of aws regions.
+    # Skip validation if custom endpoint_url is provided (cross-partition scenario)
+    skip_region_validation = singleton.AWS_S3_ENDPOINT_URL is not None
+    
     aws_regions_list = []
-    try:
-        ec2 = boto3.client("ec2")
-        rsp = ec2.describe_regions()["Regions"]
-        for region in rsp:
-            aws_regions_list.append(region["RegionName"])
-    except Exception as e:
-        print("Error attempting to validate AWS regions: %s" % e)
-        return None
-    if len(aws_regions_list) == 0:
-        return None
+    if not skip_region_validation:
+        try:
+            ec2 = boto3.client("ec2")
+            rsp = ec2.describe_regions()["Regions"]
+            for region in rsp:
+                aws_regions_list.append(region["RegionName"])
+        except Exception as e:
+            print("Error attempting to validate AWS regions: %s" % e)
+            return None
+        if len(aws_regions_list) == 0:
+            return None
 
-    origin_is_valid = False
-    destination_is_valid = False
-    region_set = set()
-    for region in aws_regions_list:
-        region_set.add(region)
-        if region == aws_origin_region:
-            origin_is_valid = True
-        if region == aws_destination_region:
-            destination_is_valid = True
-    if not (origin_is_valid == True and destination_is_valid == True):
-        print("Invalid AWS region name(s) were provided")
-        return None
+        origin_is_valid = False
+        destination_is_valid = False
+        region_set = set()
+        for region in aws_regions_list:
+            region_set.add(region)
+            if region == aws_origin_region:
+                origin_is_valid = True
+            if region == aws_destination_region:
+                destination_is_valid = True
+        if not (origin_is_valid == True and destination_is_valid == True):
+            print("Invalid AWS region name(s) were provided")
+            return None
+    else:
+        print("DEBUG: Skipping region validation (custom endpoint URL provided)")
+        region_set = set([aws_origin_region, aws_destination_region])
 
     # Validate fanout regions
     aws_regions_fanout = []
